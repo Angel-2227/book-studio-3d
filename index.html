@@ -96,7 +96,16 @@
         </div>
         <div class="ctrl-row">
           <label>Apertura</label>
-          <input type="range" id="ctrl-open" min="0" max="100" value="70" class="slider" />
+          <input type="range" id="ctrl-open" min="0" max="158" value="0" class="slider" />
+        </div>
+        <div class="ctrl-row">
+          <button class="preset-btn" id="btn-toggle-open" style="grid-column:span 3; width:100%; padding:9px;" onclick="
+            const s=document.getElementById('ctrl-open');
+            const v=parseInt(s.value);
+            const next = v>10 ? 0 : 120;
+            s.value=next;
+            window._app && window._app.book && window._app.book.setOpenAngle(next);
+          ">Abrir / Cerrar (O)</button>
         </div>
       </div>
 

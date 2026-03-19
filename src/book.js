@@ -1,377 +1,399 @@
 /**
- * book.js
- * Clase Book3D: construye y gestiona el libro 3D en Three.js.
- * Incluye tapa delantera, trasera, lomo, páginas interiores y sombras.
+ * book.js  v2
+ *
+ * Modelo físicamente correcto de un libro:
+ *
+ *   LOMO (eje fijo, pivot de todo)
+ *     ├─ Tapa trasera    → fija, extendida a la derecha del lomo
+ *     ├─ Bloque de hojas → entre las dos tapas (canto)
+ *     ├─ Hojas internas  → en abanico, distribuidas entre 0° y openAngle
+ *     └─ Tapa delantera  → rota desde el lomo de 0° a ~150°
+ *
+ * Cuando openAngle = 0   → libro cerrado
+ * Cuando openAngle = 150 → libro completamente abierto (spread plano)
+ *
+ * El pivot de TODA la rotación es el lomo (X=0 del grupo).
  */
 
 ;(function(global) {
   'use strict';
 
+  const DEG = THREE.MathUtils.degToRad;
+
   class Book3D {
     constructor(scene, renderer) {
-      this.scene = scene;
+      this.scene    = scene;
       this.renderer = renderer;
+
       this.group = new THREE.Group();
       scene.add(this.group);
 
-      // Datos
-      this.pageTextures = [];        // Array de THREE.Texture
-      this.currentSpread = 0;        // índice del spread visible
-      this.totalSpreads = 1;
+      this.pageTextures  = [];
+      this.totalPages    = 0;
+      this.currentSpread = 0;
+      this._openAngle    = 0;
 
-      // Parámetros del libro (se pueden actualizar desde UI)
       this.params = {
-        width: 1.6,       // ancho de cada página (unidades Three)
-        height: 2.2,      // alto
-        thickness: 0.20,  // grosor del lomo
-        openAngle: 70,    // grados de apertura
-        coverColor: 0x2d2016,
-        paperColor: 0xf5f0e8,
-        coverRoughness: 0.85,
+        pageW:          1.48,
+        pageH:          2.10,
+        coverThickness: 0.012,
+        spineW:         0.22,
+        coverColor:     0x2a1a0a,
+        paperColor:     0xf5f0e8,
+        coverRoughness: 0.88,
         coverMetalness: 0.0,
       };
 
-      this._built = false;
-      this._pagesMesh = null;
-      this._frontCover = null;
-      this._backCover = null;
-      this._spine = null;
-      this._shadow = null;
+      this._frontCoverGroup = null;
+      this._backCoverMesh   = null;
+      this._spineMesh       = null;
+      this._pageBlockMesh   = null;
+      this._pageGroups      = [];
+      this._pageSheets      = [];
+      this._floorShadow     = null;
+      this._built           = false;
     }
 
-    /**
-     * Construye la geometría del libro.
-     * @param {THREE.Texture[]} textures - texturas de las páginas
-     */
+    // ─────────────────────────────────────────────────
+    //  BUILD
+    // ─────────────────────────────────────────────────
+
     build(textures) {
       this.pageTextures = textures;
-      this.totalSpreads = Math.max(1, Math.ceil(textures.length / 2));
+      this.totalPages   = textures.length;
+      this._disposeMeshes();
 
-      // Limpiar grupo anterior
-      while (this.group.children.length > 0) {
-        const child = this.group.children[0];
-        this.group.remove(child);
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
-          else child.material.dispose();
-        }
-      }
+      const p = this.params;
 
-      this._buildBook();
-      this._buildShadow();
+      // 1. Tapa trasera — fija
+      //    Pivota en X=0 (lomo), se extiende hacia X+ y Z+ (hacia cámara)
+      const backGroup = new THREE.Group();
+      this.group.add(backGroup);
+      this._backCoverGroup = backGroup;
+
+      const backMesh = this._makeCoverMesh('back', null);
+      backMesh.position.set(p.pageW / 2, 0, -p.coverThickness / 2);
+      backGroup.add(backMesh);
+      // La tapa trasera NO rota — está a 0°
+
+      // 2. Lomo
+      this._spineMesh = this._makeSpineMesh();
+      this.group.add(this._spineMesh);
+
+      // 3. Bloque de hojas (canto)
+      this._pageBlockMesh = this._makePageBlock();
+      this.group.add(this._pageBlockMesh);
+
+      // 4. Hojas internas
+      this._buildInternalPages();
+
+      // 5. Tapa delantera — rota con openAngle
+      this._frontCoverGroup = new THREE.Group();
+      this.group.add(this._frontCoverGroup);
+
+      const frontMesh = this._makeCoverMesh('front', textures[0] || null);
+      frontMesh.position.set(p.pageW / 2, 0, p.coverThickness / 2);
+      this._frontCoverGroup.add(frontMesh);
+
+      // 6. Sombra de contacto
+      this._buildContactShadow();
+
       this._built = true;
-      this.setOpenAngle(this.params.openAngle);
-      this.showSpread(0);
+      this.setOpenAngle(this._openAngle);
+      this.showSpread(this.currentSpread);
     }
 
-    _buildBook() {
+    // ─────────────────────────────────────────────────
+    //  HOJAS INTERNAS
+    // ─────────────────────────────────────────────────
+
+    _buildInternalPages() {
       const p = this.params;
-      const w = p.width;
-      const h = p.height;
-      const t = p.thickness;
+      const numSheets = Math.max(2, Math.ceil(this.totalPages / 2));
 
-      // ── Materiales de tapa ──
-      const coverMat = this._makeCoverMat();
+      this._pageGroups = [];
+      this._pageSheets = [];
 
-      // ── Tapa trasera ──
-      const backGeo = new THREE.BoxGeometry(w, h, 0.018);
-      const backMesh = new THREE.Mesh(backGeo, coverMat);
-      backMesh.position.set(-w / 2, 0, -t / 2);
-      backMesh.receiveShadow = true;
-      backMesh.castShadow = true;
-      this.group.add(backMesh);
-      this._backCover = backMesh;
+      for (let i = 0; i < numSheets; i++) {
+        const group = new THREE.Group();
+        // El grupo pivota en el lomo (X=0, que es el origen)
 
-      // ── Lomo ──
-      const spineGeo = new THREE.BoxGeometry(t, h, 0.018);
-      const spineMesh = new THREE.Mesh(spineGeo, coverMat);
-      spineMesh.position.set(-w - t / 2, 0, 0);
-      spineMesh.rotation.y = Math.PI / 2;
-      spineMesh.receiveShadow = true;
-      spineMesh.castShadow = true;
-      this.group.add(spineMesh);
-      this._spine = spineMesh;
+        const geo = new THREE.PlaneGeometry(p.pageW, p.pageH);
+        const texA = this.pageTextures[i * 2]     || null;
+        const texB = this.pageTextures[i * 2 + 1] || null;
 
-      // ── Bloque de páginas (representación del canto) ──
-      const blockGeo = new THREE.BoxGeometry(w - 0.01, h - 0.01, t - 0.005);
-      const blockMat = new THREE.MeshStandardMaterial({
-        color: this.params.paperColor,
-        roughness: 0.9, metalness: 0,
-      });
-      const blockMesh = new THREE.Mesh(blockGeo, blockMat);
-      blockMesh.position.set(-w / 2, 0, 0);
-      blockMesh.receiveShadow = true;
-      this.group.add(blockMesh);
-      this._pageBlock = blockMesh;
+        const matFront = this._makePageMat(texA);
+        const matBack  = this._makePageMat(texB);
 
-      // ── Tapa delantera (con pivot en el lomo) ──
-      const frontGroup = new THREE.Group();
-      frontGroup.position.set(-w, 0, 0); // pivot en lomo
-      this.group.add(frontGroup);
+        // Cara visible al abrir (mirando hacia Z+)
+        const meshFront = new THREE.Mesh(geo, matFront);
+        meshFront.position.set(p.pageW / 2, 0, 0);
+        group.add(meshFront);
 
-      const frontGeo = new THREE.BoxGeometry(w, h, 0.018);
+        // Cara trasera (mirando hacia Z-)
+        const meshBack = new THREE.Mesh(geo, matBack);
+        meshBack.position.set(p.pageW / 2, 0, 0);
+        meshBack.rotation.y = Math.PI;
+        group.add(meshBack);
 
-      // Material frontal con textura de portada o color sólido
-      const frontMat = this._makeCoverMat();
-      if (this.pageTextures.length > 0) {
-        // Asignar textura de la primera página como portada
-        const coverTex = this.pageTextures[0];
-        const matWithTex = new THREE.MeshStandardMaterial({
-          map: coverTex,
-          roughness: this.params.coverRoughness,
-          metalness: this.params.coverMetalness,
-        });
-        const matBack = this._makeCoverMat();
-        frontGroup.userData.coverMatFront = matWithTex;
-        frontGroup.userData.coverMatBack = matBack;
+        this.group.add(group);
+        this._pageGroups.push(group);
+        this._pageSheets.push({ group, matFront, matBack, sheetIndex: i });
+      }
+    }
 
-        // La tapa frontal tiene distintas materiales por cara
-        const mats = [
-          coverMat, coverMat,  // laterales
-          coverMat, coverMat,  // top/bottom
-          matBack,             // cara interior (Z-)
-          matWithTex,          // cara exterior (Z+)
-        ];
-        const frontMesh = new THREE.Mesh(frontGeo, mats);
-        frontMesh.position.set(w / 2, 0, t / 2);
-        frontMesh.castShadow = true;
-        frontGroup.add(frontMesh);
-      } else {
-        const frontMesh = new THREE.Mesh(frontGeo, frontMat);
-        frontMesh.position.set(w / 2, 0, t / 2);
-        frontMesh.castShadow = true;
-        frontGroup.add(frontMesh);
+    // ─────────────────────────────────────────────────
+    //  APERTURA
+    // ─────────────────────────────────────────────────
+
+    setOpenAngle(degrees) {
+      this._openAngle = Math.max(0, Math.min(158, degrees));
+      if (this._built) this._applyOpenAngle(this._openAngle);
+    }
+
+    _applyOpenAngle(angleDeg) {
+      const p = this.params;
+      const n = this._pageGroups.length;
+      if (n === 0) return;
+
+      // La tapa trasera está a rotation.y = 0 (fija, eje Z positivo)
+      // La tapa delantera rota a -angleDeg alrededor del lomo
+
+      // Tapa delantera
+      if (this._frontCoverGroup) {
+        this._frontCoverGroup.rotation.y = DEG(angleDeg);
       }
 
-      this._frontCover = frontGroup;
+      // Hojas: distribuidas en abanico entre 0° y angleDeg
+      // La hoja 0 (más pegada a la tapa trasera) está casi en 0°
+      // La hoja n-1 (más pegada a la tapa delantera) está casi en angleDeg
+      for (let i = 0; i < n; i++) {
+        const t = n > 1 ? i / (n - 1) : 0.5;
+        const eased = this._smoothStep(t);
+        const pageAngle = eased * angleDeg;
+        this._pageGroups[i].rotation.y = DEG(pageAngle);
+      }
 
-      // ── Plano de páginas con textura ──
-      this._buildPagePlane();
+      // El bloque de canto se aplana con la apertura
+      if (this._pageBlockMesh) {
+        const t = angleDeg / 158;
+        const scaleZ = THREE.MathUtils.lerp(1.0, 0.08, t);
+        this._pageBlockMesh.scale.z = scaleZ;
+        // Rotar el bloque para seguir el spread
+        this._pageBlockMesh.rotation.y = DEG(angleDeg / 2);
+      }
     }
 
-    _buildPagePlane() {
-      const p = this.params;
-      const w = p.width;
-      const h = p.height;
-
-      // Plano doble que simula el spread abierto
-      // (dos páginas: izquierda y derecha)
-      const spreadGroup = new THREE.Group();
-      spreadGroup.position.set(-w / 2, 0, p.thickness / 2 + 0.001);
-      this.group.add(spreadGroup);
-      this._spreadGroup = spreadGroup;
-
-      // Página izquierda
-      const leftGeo = new THREE.PlaneGeometry(w, h);
-      const leftMat = new THREE.MeshStandardMaterial({
-        color: this.params.paperColor, roughness: 0.9, metalness: 0,
-        side: THREE.FrontSide,
-      });
-      const leftMesh = new THREE.Mesh(leftGeo, leftMat);
-      leftMesh.position.set(-w / 2, 0, 0);
-      leftMesh.receiveShadow = true;
-      spreadGroup.add(leftMesh);
-      this._leftPage = leftMesh;
-
-      // Página derecha
-      const rightGeo = new THREE.PlaneGeometry(w, h);
-      const rightMat = new THREE.MeshStandardMaterial({
-        color: this.params.paperColor, roughness: 0.9, metalness: 0,
-        side: THREE.FrontSide,
-      });
-      const rightMesh = new THREE.Mesh(rightGeo, rightMat);
-      rightMesh.position.set(w / 2, 0, 0);
-      rightMesh.receiveShadow = true;
-      spreadGroup.add(rightMesh);
-      this._rightPage = rightMesh;
-
-      // Línea de doblez (sutil)
-      const lineGeo = new THREE.PlaneGeometry(0.003, h);
-      const lineMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15 });
-      const line = new THREE.Mesh(lineGeo, lineMat);
-      line.position.set(0, 0, 0.001);
-      spreadGroup.add(line);
+    _smoothStep(t) {
+      // SmoothStep: densifica en los extremos (hojas apiladas en tapas)
+      return t * t * (3 - 2 * t);
     }
 
-    _buildShadow() {
-      // Sombra de contacto (blob shadow)
-      const shadowGeo = new THREE.PlaneGeometry(this.params.width * 4, this.params.width * 3);
-      const shadowMat = new THREE.MeshBasicMaterial({
-        color: 0x000000,
-        transparent: true,
-        opacity: 0.0,
-        depthWrite: false,
+    // ─────────────────────────────────────────────────
+    //  SPREAD VISIBLE
+    // ─────────────────────────────────────────────────
+
+    showSpread(index) {
+      if (!this._built) return;
+      const maxSpread = Math.max(0, Math.ceil(this.totalPages / 2) - 1);
+      this.currentSpread = Math.max(0, Math.min(index, maxSpread));
+
+      // Actualizar texturas de la hoja activa (la del centro visual)
+      // La hoja "activa" es la que corresponde al spread actual
+      this._pageSheets.forEach((sheet, i) => {
+        const isActive = i === this.currentSpread;
+        const leftIdx  = this.currentSpread * 2;
+        const rightIdx = this.currentSpread * 2 + 1;
+
+        if (isActive) {
+          if (sheet.matFront) {
+            const tex = this.pageTextures[leftIdx] || null;
+            sheet.matFront.map = tex;
+            sheet.matFront.color.set(tex ? 0xffffff : this.params.paperColor);
+            sheet.matFront.needsUpdate = true;
+          }
+          if (sheet.matBack) {
+            const tex = this.pageTextures[rightIdx] || null;
+            sheet.matBack.map = tex;
+            sheet.matBack.color.set(tex ? 0xffffff : this.params.paperColor);
+            sheet.matBack.needsUpdate = true;
+          }
+        }
       });
-      const shadow = new THREE.Mesh(shadowGeo, shadowMat);
-      shadow.rotation.x = -Math.PI / 2;
-      shadow.position.set(-this.params.width, -this.params.height / 2 - 0.001, 0);
-      shadow.receiveShadow = false;
-      this.scene.add(shadow);
-      this._shadowMesh = shadow;
     }
 
-    _makeCoverMat() {
+    nextSpread() {
+      const max = Math.max(0, Math.ceil(this.totalPages / 2) - 1);
+      if (this.currentSpread < max) { this.showSpread(this.currentSpread + 1); return true; }
+      return false;
+    }
+
+    prevSpread() {
+      if (this.currentSpread > 0) { this.showSpread(this.currentSpread - 1); return true; }
+      return false;
+    }
+
+    // ─────────────────────────────────────────────────
+    //  FÁBRICAS DE GEOMETRÍA / MATERIAL
+    // ─────────────────────────────────────────────────
+
+    _makeCoverMesh(side, coverTex) {
+      const p   = this.params;
+      const geo = new THREE.BoxGeometry(p.pageW, p.pageH, p.coverThickness);
+
+      let mats;
+      if (coverTex && side === 'front') {
+        const texMat = new THREE.MeshStandardMaterial({
+          map: coverTex, roughness: p.coverRoughness, metalness: p.coverMetalness,
+        });
+        const solid = this._makeSolidCoverMat();
+        // BoxGeometry face order: +X, -X, +Y, -Y, +Z (front), -Z (back)
+        mats = [solid, solid, solid, solid, solid, texMat];
+      } else {
+        mats = this._makeSolidCoverMat();
+      }
+
+      const mesh = new THREE.Mesh(geo, mats);
+      mesh.castShadow = mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    _makeSolidCoverMat() {
       return new THREE.MeshStandardMaterial({
-        color: this.params.coverColor,
+        color:     this.params.coverColor,
         roughness: this.params.coverRoughness,
         metalness: this.params.coverMetalness,
       });
     }
 
-    /**
-     * Muestra el spread (doble página) con índice dado.
-     */
-    showSpread(index) {
-      if (!this._built) return;
-      this.currentSpread = Math.max(0, Math.min(index, this.totalSpreads - 1));
-
-      const leftIdx = this.currentSpread * 2;
-      const rightIdx = leftIdx + 1;
-
-      // Asignar texturas
-      if (this._leftPage) {
-        const tex = this.pageTextures[leftIdx] || null;
-        this._leftPage.material.map = tex;
-        this._leftPage.material.color.set(tex ? 0xffffff : this.params.paperColor);
-        this._leftPage.material.needsUpdate = true;
-      }
-      if (this._rightPage) {
-        const tex = this.pageTextures[rightIdx] || null;
-        this._rightPage.material.map = tex;
-        this._rightPage.material.color.set(tex ? 0xffffff : this.params.paperColor);
-        this._rightPage.material.needsUpdate = true;
-      }
+    _makeSpineMesh() {
+      const p   = this.params;
+      const geo = new THREE.BoxGeometry(p.coverThickness * 1.6, p.pageH, p.spineW + p.coverThickness * 2);
+      const mat = this._makeSolidCoverMat();
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(-p.coverThickness * 0.8, 0, -(p.spineW / 2 + p.coverThickness));
+      mesh.castShadow = mesh.receiveShadow = true;
+      return mesh;
     }
 
-    nextSpread() {
-      if (this.currentSpread < this.totalSpreads - 1) {
-        this.showSpread(this.currentSpread + 1);
-        return true;
-      }
-      return false;
+    _makePageBlock() {
+      const p   = this.params;
+      const geo = new THREE.BoxGeometry(p.pageW * 0.98, p.pageH * 0.995, p.spineW);
+      const mat = new THREE.MeshStandardMaterial({
+        color: this.params.paperColor, roughness: 0.92, metalness: 0,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      // Centrado en lomo, extendido hacia X+
+      mesh.position.set(p.pageW / 2, 0, -(p.spineW / 2 + p.coverThickness));
+      mesh.receiveShadow = true;
+      return mesh;
     }
 
-    prevSpread() {
-      if (this.currentSpread > 0) {
-        this.showSpread(this.currentSpread - 1);
-        return true;
-      }
-      return false;
+    _makePageMat(tex) {
+      return new THREE.MeshStandardMaterial({
+        map:       tex  || null,
+        color:     tex  ? 0xffffff : this.params.paperColor,
+        roughness: 0.88,
+        metalness: 0,
+        side:      THREE.FrontSide,
+      });
     }
 
-    /**
-     * Establece el ángulo de apertura del libro (0 = cerrado, 180 = totalmente abierto).
-     */
-    setOpenAngle(degrees) {
-      if (!this._built) return;
-      this.params.openAngle = degrees;
-
-      const t = this.params.thickness;
-      const angleRad = THREE.MathUtils.degToRad(degrees);
-
-      // Rotar tapa delantera sobre el lomo (eje Y)
-      if (this._frontCover) {
-        this._frontCover.rotation.y = -angleRad;
-      }
-
-      // Ajustar visibilidad y posición del spread de páginas
-      // El spread solo es visible cuando el libro está abierto
-      if (this._spreadGroup) {
-        const visibility = Math.min(1, degrees / 30);
-        this._spreadGroup.position.z = t / 2 + 0.002;
-
-        // Rotar ligeramente las páginas según apertura para simular curvatura
-        const leftAngle = THREE.MathUtils.degToRad(degrees * 0.08);
-        const rightAngle = THREE.MathUtils.degToRad(-degrees * 0.04);
-        if (this._leftPage) this._leftPage.rotation.y = leftAngle;
-        if (this._rightPage) this._rightPage.rotation.y = rightAngle;
-
-        // Fade in de las páginas al abrir
-        if (this._leftPage && this._leftPage.material) {
-          this._leftPage.material.opacity = visibility;
-          this._leftPage.material.transparent = visibility < 1;
-        }
-        if (this._rightPage && this._rightPage.material) {
-          this._rightPage.material.opacity = visibility;
-          this._rightPage.material.transparent = visibility < 1;
-        }
-      }
+    _buildContactShadow() {
+      const p   = this.params;
+      const geo = new THREE.PlaneGeometry(p.pageW * 3, p.pageH * 1.6);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x000000, transparent: true, opacity: 0, depthWrite: false,
+      });
+      this._floorShadow = new THREE.Mesh(geo, mat);
+      this._floorShadow.rotation.x = -Math.PI / 2;
+      this._floorShadow.position.set(p.pageW / 2, -p.pageH / 2 - 0.002, 0);
+      this.scene.add(this._floorShadow);
     }
 
-    /**
-     * Actualiza el color de la tapa.
-     */
+    // ─────────────────────────────────────────────────
+    //  API PÚBLICA DE ESTILO
+    // ─────────────────────────────────────────────────
+
     setCoverColor(hexStr) {
       const color = new THREE.Color(hexStr);
       this.params.coverColor = color.getHex();
       this.group.traverse(obj => {
-        if (obj.isMesh && obj.material) {
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          mats.forEach(m => {
-            // Solo cambiar materiales sin textura de página
-            if (!m.map && m.color) m.color.set(color);
-          });
-        }
+        if (!obj.isMesh) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach(m => { if (m && !m.map && m.color) m.color.set(color); });
       });
     }
 
     setCoverFinish(type) {
-      const finishMap = {
-        matte: { roughness: 0.9, metalness: 0.0 },
-        glossy: { roughness: 0.05, metalness: 0.1 },
-        satin: { roughness: 0.45, metalness: 0.05 },
-      };
-      const f = finishMap[type] || finishMap.matte;
-      this.params.coverRoughness = f.roughness;
-      this.params.coverMetalness = f.metalness;
+      const pr = { matte: [0.92,0], glossy: [0.04,0.08], satin: [0.42,0.04] }[type] || [0.92,0];
+      this.params.coverRoughness = pr[0];
+      this.params.coverMetalness = pr[1];
       this.group.traverse(obj => {
-        if (obj.isMesh && obj.material) {
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          mats.forEach(m => {
-            if (!m.map) {
-              m.roughness = f.roughness;
-              m.metalness = f.metalness;
-              m.needsUpdate = true;
-            }
-          });
-        }
+        if (!obj.isMesh) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach(m => {
+          if (!m || m.map) return;
+          m.roughness = pr[0]; m.metalness = pr[1]; m.needsUpdate = true;
+        });
       });
     }
 
     setPaperColor(hexStr) {
       const color = new THREE.Color(hexStr);
       this.params.paperColor = color.getHex();
-      if (this._leftPage) this._leftPage.material.color.set(color);
-      if (this._rightPage) this._rightPage.material.color.set(color);
-      if (this._pageBlock) this._pageBlock.material.color.set(color);
+      this._pageSheets.forEach(s => {
+        if (s.matFront && !s.matFront.map) s.matFront.color.set(color);
+        if (s.matBack  && !s.matBack.map)  s.matBack.color.set(color);
+      });
+      if (this._pageBlockMesh) this._pageBlockMesh.material.color.set(color);
     }
 
-    /**
-     * Actualiza el grosor del lomo (reconstruye el libro).
-     */
-    setThickness(value) {
-      const t = THREE.MathUtils.mapLinear(value, 2, 60, 0.02, 0.6);
-      if (Math.abs(t - this.params.thickness) < 0.001) return;
-      this.params.thickness = t;
+    setThickness(sliderVal) {
+      const t = THREE.MathUtils.mapLinear(sliderVal, 2, 60, 0.04, 0.72);
+      if (Math.abs(t - this.params.spineW) < 0.005) return;
+      this.params.spineW = t;
       if (this._built && this.pageTextures.length > 0) {
+        const angle = this._openAngle;
+        const spread = this.currentSpread;
         this.build(this.pageTextures);
+        this._openAngle = angle;
+        this._applyOpenAngle(angle);
+        this.showSpread(spread);
       }
     }
 
-    setShadowOpacity(value) {
-      if (this._shadowMesh) {
-        this._shadowMesh.material.opacity = value * 0.4;
-      }
+    setShadowOpacity(v) {
+      if (this._floorShadow) this._floorShadow.material.opacity = v * 0.5;
     }
 
-    /**
-     * Obtiene el bounding box del libro para centrar la cámara.
-     */
     getBoundingBox() {
       const box = new THREE.Box3();
       box.setFromObject(this.group);
       return box;
+    }
+
+    _disposeMeshes() {
+      while (this.group.children.length) {
+        const c = this.group.children[0];
+        this.group.remove(c);
+        c.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach(m => { if (m) m.dispose(); });
+          }
+        });
+      }
+      if (this._floorShadow) {
+        this.scene.remove(this._floorShadow);
+        this._floorShadow.geometry.dispose();
+        this._floorShadow.material.dispose();
+        this._floorShadow = null;
+      }
+      this._pageGroups = [];
+      this._pageSheets = [];
+      this._built      = false;
     }
   }
 
