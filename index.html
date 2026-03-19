@@ -10,193 +10,256 @@
   <link rel="stylesheet" href="src/styles.css" />
 </head>
 <body>
-  <!-- UPLOAD SCREEN -->
-  <div id="upload-screen" class="screen active">
-    <div class="upload-bg">
-      <div class="upload-grain"></div>
-      <div class="upload-lines"></div>
-    </div>
-    <div class="upload-content">
-      <div class="brand">
-        <span class="brand-mark">◈</span>
-        <h1>Book Studio <em>3D</em></h1>
-        <p class="brand-sub">Visualizador tridimensional de publicaciones</p>
-      </div>
 
-      <div class="drop-zone" id="drop-zone">
-        <div class="drop-inner">
-          <div class="drop-icon">
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 52V12C8 9.79 9.79 8 12 8H40L56 24V52C56 54.21 54.21 56 52 56H12C9.79 56 8 54.21 8 52Z" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M40 8V24H56" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M32 34V46M32 34L27 39M32 34L37 39" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <p class="drop-text">Arrastra tu PDF aquí</p>
-          <p class="drop-sub">o haz clic para seleccionar</p>
-          <label class="drop-btn" for="file-input">Seleccionar archivo</label>
-          <input type="file" id="file-input" accept=".pdf,application/pdf" />
+<!-- ── PANTALLA UPLOAD ── -->
+<div id="upload-screen" class="screen">
+  <div class="upload-bg">
+    <div class="upload-grain"></div>
+    <div class="upload-lines"></div>
+  </div>
+  <div class="upload-content">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <h1>Book Studio <em>3D</em></h1>
+      <p class="brand-sub">Visualizador tridimensional de publicaciones</p>
+    </div>
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-inner">
+        <div class="drop-icon">
+          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 52V12C8 9.79 9.79 8 12 8H40L56 24V52C56 54.21 54.21 56 52 56H12C9.79 56 8 54.21 8 52Z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M40 8V24H56" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M32 34V46M32 34L27 39M32 34L37 39" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
         </div>
-      </div>
-
-      <div class="upload-specs">
-        <span>PDF · Hasta 100 MB</span>
-        <span>·</span>
-        <span>Resolución de renderizado adaptativa</span>
+        <p class="drop-text">Arrastra tu PDF aquí</p>
+        <p class="drop-sub">o haz clic para seleccionar</p>
+        <label class="drop-btn" for="file-input">Seleccionar archivo</label>
+        <input type="file" id="file-input" accept=".pdf,application/pdf" />
       </div>
     </div>
-  </div>
 
-  <!-- LOADING SCREEN -->
-  <div id="loading-screen" class="screen">
-    <div class="loading-content">
-      <div class="loading-book">
-        <div class="loading-page p1"></div>
-        <div class="loading-page p2"></div>
-        <div class="loading-page p3"></div>
-      </div>
-      <p class="loading-label" id="loading-label">Procesando PDF…</p>
-      <div class="loading-bar">
-        <div class="loading-fill" id="loading-fill"></div>
-      </div>
+    <div class="upload-specs">
+      <span>PDF · Hasta 100 MB</span>
+      <span>·</span>
+      <span>Cualquier proporción de página</span>
     </div>
   </div>
+</div>
 
-  <!-- VIEWER SCREEN -->
-  <div id="viewer-screen" class="screen">
-    <!-- Canvas 3D -->
-    <canvas id="gl-canvas"></canvas>
+<!-- ── PANTALLA LOADING ── -->
+<div id="loading-screen" class="screen">
+  <div class="loading-content">
+    <div class="loading-book">
+      <div class="loading-page p1"></div>
+      <div class="loading-page p2"></div>
+      <div class="loading-page p3"></div>
+    </div>
+    <p class="loading-label" id="loading-label">Procesando PDF…</p>
+    <div class="loading-bar">
+      <div class="loading-fill" id="loading-fill"></div>
+    </div>
+  </div>
+</div>
 
-    <!-- HUD top -->
-    <header class="hud-top">
-      <button class="hud-brand" id="btn-back">
-        <span class="brand-mark-sm">◈</span>
-        <span>Book Studio</span>
+<!-- ── PANTALLA VIEWER ── -->
+<div id="viewer-screen" class="screen">
+
+  <!-- Canvas Three.js -->
+  <canvas id="gl-canvas"></canvas>
+
+  <!-- Header HUD -->
+  <header class="hud-top">
+    <button class="hud-brand" id="btn-back">
+      <span class="brand-mark-sm">◈</span>
+      <span>Book Studio</span>
+    </button>
+    <div class="hud-title" id="book-title">—</div>
+    <div class="hud-actions">
+      <button class="hud-btn" id="btn-screenshot" title="Captura de pantalla">
+        <svg viewBox="0 0 20 20" fill="none">
+          <circle cx="10" cy="10" r="3.5" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M7 3H4a1 1 0 00-1 1v2M7 17H4a1 1 0 01-1-1v-2M13 3h3a1 1 0 011 1v2M13 17h3a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <span>Captura</span>
       </button>
-      <div class="hud-title" id="book-title">—</div>
-      <div class="hud-actions">
-        <button class="hud-btn" id="btn-screenshot" title="Captura">
-          <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 3H4a1 1 0 00-1 1v2M7 17H4a1 1 0 01-1-1v-2M13 3h3a1 1 0 011 1v2M13 17h3a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-          <span>Captura</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- Panel de controles izquierdo -->
-    <aside class="panel-left" id="panel-left">
-      <div class="panel-section">
-        <h3 class="panel-title">Libro</h3>
-        <div class="ctrl-row">
-          <label>Página</label>
-          <div class="page-nav">
-            <button id="btn-prev">‹</button>
-            <span id="page-indicator">1 / 1</span>
-            <button id="btn-next">›</button>
-          </div>
-        </div>
-        <div class="ctrl-row">
-          <label>Apertura</label>
-          <input type="range" id="ctrl-open" min="0" max="158" value="0" class="slider" />
-        </div>
-        <div class="ctrl-row">
-          <button class="preset-btn" id="btn-toggle-open" style="grid-column:span 3; width:100%; padding:9px;" onclick="
-            const s=document.getElementById('ctrl-open');
-            const v=parseInt(s.value);
-            const next = v>10 ? 0 : 120;
-            s.value=next;
-            window._app && window._app.book && window._app.book.setOpenAngle(next);
-          ">Abrir / Cerrar (O)</button>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h3 class="panel-title">Material</h3>
-        <div class="ctrl-row">
-          <label>Grosor</label>
-          <input type="range" id="ctrl-thickness" min="2" max="60" value="20" class="slider" />
-        </div>
-        <div class="ctrl-row">
-          <label>Tapa</label>
-          <div class="color-row">
-            <input type="color" id="ctrl-cover-color" value="#2d2016" />
-            <span id="ctrl-cover-color-val">#2d2016</span>
-          </div>
-        </div>
-        <div class="ctrl-row">
-          <label>Papel</label>
-          <div class="color-row">
-            <input type="color" id="ctrl-paper-color" value="#f5f0e8" />
-            <span id="ctrl-paper-color-val">#f5f0e8</span>
-          </div>
-        </div>
-        <div class="ctrl-row">
-          <label>Acabado tapa</label>
-          <select id="ctrl-cover-finish" class="select">
-            <option value="matte">Mate</option>
-            <option value="glossy">Brillante</option>
-            <option value="satin">Satinado</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h3 class="panel-title">Escena</h3>
-        <div class="ctrl-row">
-          <label>Ambiente</label>
-          <select id="ctrl-env" class="select">
-            <option value="studio">Estudio</option>
-            <option value="natural">Natural</option>
-            <option value="dark">Oscuro</option>
-            <option value="warm">Cálido</option>
-          </select>
-        </div>
-        <div class="ctrl-row">
-          <label>Fondo</label>
-          <div class="color-row">
-            <input type="color" id="ctrl-bg-color" value="#e8e4dd" />
-            <span id="ctrl-bg-color-val">#e8e4dd</span>
-          </div>
-        </div>
-        <div class="ctrl-row">
-          <label>Sombra</label>
-          <input type="range" id="ctrl-shadow" min="0" max="100" value="60" class="slider" />
-        </div>
-        <div class="ctrl-row">
-          <label>Luz ambiente</label>
-          <input type="range" id="ctrl-ambient" min="0" max="100" value="40" class="slider" />
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h3 class="panel-title">Cámara</h3>
-        <div class="preset-grid">
-          <button class="preset-btn" data-cam="front">Frente</button>
-          <button class="preset-btn" data-cam="side">Lateral</button>
-          <button class="preset-btn" data-cam="top">Cenital</button>
-          <button class="preset-btn" data-cam="iso">Iso</button>
-          <button class="preset-btn" data-cam="three-quarter">¾</button>
-          <button class="preset-btn" data-cam="spine">Lomo</button>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Instrucciones flotantes -->
-    <div class="hint-bar" id="hint-bar">
-      <span><kbd>Drag</kbd> Rotar</span>
-      <span><kbd>Scroll</kbd> Zoom</span>
-      <span><kbd>Shift+Drag</kbd> Panear</span>
     </div>
+  </header>
+
+  <!-- Panel izquierdo -->
+  <aside class="panel-left" id="panel-left">
+
+    <!-- Libro: navegación y apertura -->
+    <div class="panel-section">
+      <h3 class="panel-title">Libro</h3>
+      <div class="ctrl-row">
+        <label>Spread</label>
+        <div class="page-nav">
+          <button id="btn-prev" disabled>‹</button>
+          <span id="page-indicator">— / —</span>
+          <button id="btn-next" disabled>›</button>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <label>Apertura</label>
+        <input type="range" id="ctrl-open" min="0" max="158" value="0" class="slider" />
+        <span class="slider-val" id="val-open">0°</span>
+      </div>
+      <div class="ctrl-row">
+        <button class="preset-btn full-width" id="btn-toggle-open">Abrir / Cerrar <kbd>O</kbd></button>
+      </div>
+    </div>
+
+    <!-- Portada -->
+    <div class="panel-section">
+      <h3 class="panel-title">Portada</h3>
+
+      <!-- Preview + zona de drop de imagen -->
+      <div class="cover-drop" id="cover-drop" title="Haz clic para subir imagen de portada">
+        <div class="cover-preview" id="cover-preview">
+          <span class="cover-placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" width="22" height="22">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <path d="M21 15l-5-5L5 21"/>
+            </svg>
+            <span>Subir imagen</span>
+          </span>
+        </div>
+        <label class="cover-label" for="cover-image-input">Seleccionar imagen</label>
+        <input type="file" id="cover-image-input" accept="image/*" style="display:none" />
+      </div>
+
+      <div class="ctrl-row" style="margin-top:8px">
+        <button class="preset-btn full-width" id="cover-clear-btn">✕ Quitar imagen</button>
+      </div>
+
+      <!-- Color de tapa (activo cuando no hay imagen) -->
+      <div class="ctrl-row">
+        <label>Color</label>
+        <div class="color-row">
+          <input type="color" id="ctrl-cover-color" value="#2d2016" />
+          <span id="ctrl-cover-color-val">#2d2016</span>
+        </div>
+      </div>
+
+      <div class="ctrl-row">
+        <label>Acabado</label>
+        <select id="ctrl-cover-finish" class="select">
+          <option value="matte">Mate</option>
+          <option value="glossy">Brillante</option>
+          <option value="satin">Satinado</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Páginas internas -->
+    <div class="panel-section">
+      <h3 class="panel-title">Páginas</h3>
+      <div class="ctrl-row">
+        <label>Grosor</label>
+        <input type="range" id="ctrl-thickness" min="2" max="60" value="20" class="slider" />
+        <span class="slider-val" id="val-thickness">20</span>
+      </div>
+      <div class="ctrl-row">
+        <label>Papel</label>
+        <div class="color-row">
+          <input type="color" id="ctrl-paper-color" value="#f5f0e8" />
+          <span id="ctrl-paper-color-val">#f5f0e8</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Escena -->
+    <div class="panel-section">
+      <h3 class="panel-title">Escena</h3>
+      <div class="ctrl-row">
+        <label>Ambiente</label>
+        <select id="ctrl-env" class="select">
+          <option value="studio">Estudio</option>
+          <option value="natural">Natural</option>
+          <option value="dark">Oscuro</option>
+          <option value="warm">Cálido</option>
+        </select>
+      </div>
+      <div class="ctrl-row">
+        <label>Fondo</label>
+        <div class="color-row">
+          <input type="color" id="ctrl-bg-color" value="#e8e4dd" />
+          <span id="ctrl-bg-color-val">#e8e4dd</span>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <label>Sombra</label>
+        <input type="range" id="ctrl-shadow" min="0" max="100" value="60" class="slider" />
+      </div>
+      <div class="ctrl-row">
+        <label>Ambiente</label>
+        <input type="range" id="ctrl-ambient" min="0" max="100" value="40" class="slider" />
+      </div>
+    </div>
+
+    <!-- Cámara -->
+    <div class="panel-section">
+      <h3 class="panel-title">Cámara</h3>
+      <div class="preset-grid">
+        <button class="preset-btn" data-cam="front">Frente</button>
+        <button class="preset-btn" data-cam="side">Lateral</button>
+        <button class="preset-btn" data-cam="top">Cenital</button>
+        <button class="preset-btn active" data-cam="iso">Iso</button>
+        <button class="preset-btn" data-cam="three-quarter">¾</button>
+        <button class="preset-btn" data-cam="spine">Lomo</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Hint bar -->
+  <div class="hint-bar" id="hint-bar">
+    <span><kbd>Drag</kbd> Rotar</span>
+    <span><kbd>Scroll</kbd> Zoom</span>
+    <span><kbd>Shift+Drag</kbd> Panear</span>
+    <span><kbd>← →</kbd> Spreads</span>
   </div>
 
-  <!-- Toast de notificaciones -->
-  <div class="toast" id="toast"></div>
+</div>
 
-  <!-- Scripts -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="src/pdfLoader.js"></script>
-  <script src="src/book.js"></script>
-  <script src="src/ui.js"></script>
-  <script src="src/main.js"></script>
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Scripts -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="src/pdfLoader.js"></script>
+<script src="src/book.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/main.js"></script>
+
+<!-- Slider display sync -->
+<script>
+  function syncSlider(id, valId, suffix) {
+    const sl = document.getElementById(id);
+    const vl = document.getElementById(valId);
+    if (!sl || !vl) return;
+    sl.addEventListener('input', () => { vl.textContent = sl.value + (suffix || ''); });
+  }
+  syncSlider('ctrl-open',      'val-open',      '°');
+  syncSlider('ctrl-thickness', 'val-thickness', '');
+
+  // Botón Abrir/Cerrar
+  document.getElementById('btn-toggle-open').addEventListener('click', () => {
+    const s = document.getElementById('ctrl-open');
+    const next = parseFloat(s.value) > 10 ? 0 : 120;
+    s.value = next;
+    document.getElementById('val-open').textContent = next + '°';
+    if (window._app && window._app.book) window._app.book.setOpenAngle(next);
+  });
+
+  // Cover drop zone click
+  document.getElementById('cover-drop').addEventListener('click', () => {
+    document.getElementById('cover-image-input').click();
+  });
+</script>
 </body>
 </html>
