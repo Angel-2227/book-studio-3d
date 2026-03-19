@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Studio 3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <!-- UPLOAD SCREEN -->
+  <div id="upload-screen" class="screen active">
+    <div class="upload-bg">
+      <div class="upload-grain"></div>
+      <div class="upload-lines"></div>
+    </div>
+    <div class="upload-content">
+      <div class="brand">
+        <span class="brand-mark">◈</span>
+        <h1>Book Studio <em>3D</em></h1>
+        <p class="brand-sub">Visualizador tridimensional de publicaciones</p>
+      </div>
+
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-inner">
+          <div class="drop-icon">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 52V12C8 9.79 9.79 8 12 8H40L56 24V52C56 54.21 54.21 56 52 56H12C9.79 56 8 54.21 8 52Z" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M40 8V24H56" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M32 34V46M32 34L27 39M32 34L37 39" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <p class="drop-text">Arrastra tu PDF aquí</p>
+          <p class="drop-sub">o haz clic para seleccionar</p>
+          <label class="drop-btn" for="file-input">Seleccionar archivo</label>
+          <input type="file" id="file-input" accept=".pdf,application/pdf" />
+        </div>
+      </div>
+
+      <div class="upload-specs">
+        <span>PDF · Hasta 100 MB</span>
+        <span>·</span>
+        <span>Resolución de renderizado adaptativa</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOADING SCREEN -->
+  <div id="loading-screen" class="screen">
+    <div class="loading-content">
+      <div class="loading-book">
+        <div class="loading-page p1"></div>
+        <div class="loading-page p2"></div>
+        <div class="loading-page p3"></div>
+      </div>
+      <p class="loading-label" id="loading-label">Procesando PDF…</p>
+      <div class="loading-bar">
+        <div class="loading-fill" id="loading-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEWER SCREEN -->
+  <div id="viewer-screen" class="screen">
+    <!-- Canvas 3D -->
+    <canvas id="gl-canvas"></canvas>
+
+    <!-- HUD top -->
+    <header class="hud-top">
+      <button class="hud-brand" id="btn-back">
+        <span class="brand-mark-sm">◈</span>
+        <span>Book Studio</span>
+      </button>
+      <div class="hud-title" id="book-title">—</div>
+      <div class="hud-actions">
+        <button class="hud-btn" id="btn-screenshot" title="Captura">
+          <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 3H4a1 1 0 00-1 1v2M7 17H4a1 1 0 01-1-1v-2M13 3h3a1 1 0 011 1v2M13 17h3a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <span>Captura</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Panel de controles izquierdo -->
+    <aside class="panel-left" id="panel-left">
+      <div class="panel-section">
+        <h3 class="panel-title">Libro</h3>
+        <div class="ctrl-row">
+          <label>Página</label>
+          <div class="page-nav">
+            <button id="btn-prev">‹</button>
+            <span id="page-indicator">1 / 1</span>
+            <button id="btn-next">›</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <label>Apertura</label>
+          <input type="range" id="ctrl-open" min="0" max="100" value="70" class="slider" />
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="panel-title">Material</h3>
+        <div class="ctrl-row">
+          <label>Grosor</label>
+          <input type="range" id="ctrl-thickness" min="2" max="60" value="20" class="slider" />
+        </div>
+        <div class="ctrl-row">
+          <label>Tapa</label>
+          <div class="color-row">
+            <input type="color" id="ctrl-cover-color" value="#2d2016" />
+            <span id="ctrl-cover-color-val">#2d2016</span>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <label>Papel</label>
+          <div class="color-row">
+            <input type="color" id="ctrl-paper-color" value="#f5f0e8" />
+            <span id="ctrl-paper-color-val">#f5f0e8</span>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <label>Acabado tapa</label>
+          <select id="ctrl-cover-finish" class="select">
+            <option value="matte">Mate</option>
+            <option value="glossy">Brillante</option>
+            <option value="satin">Satinado</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="panel-title">Escena</h3>
+        <div class="ctrl-row">
+          <label>Ambiente</label>
+          <select id="ctrl-env" class="select">
+            <option value="studio">Estudio</option>
+            <option value="natural">Natural</option>
+            <option value="dark">Oscuro</option>
+            <option value="warm">Cálido</option>
+          </select>
+        </div>
+        <div class="ctrl-row">
+          <label>Fondo</label>
+          <div class="color-row">
+            <input type="color" id="ctrl-bg-color" value="#e8e4dd" />
+            <span id="ctrl-bg-color-val">#e8e4dd</span>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <label>Sombra</label>
+          <input type="range" id="ctrl-shadow" min="0" max="100" value="60" class="slider" />
+        </div>
+        <div class="ctrl-row">
+          <label>Luz ambiente</label>
+          <input type="range" id="ctrl-ambient" min="0" max="100" value="40" class="slider" />
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="panel-title">Cámara</h3>
+        <div class="preset-grid">
+          <button class="preset-btn" data-cam="front">Frente</button>
+          <button class="preset-btn" data-cam="side">Lateral</button>
+          <button class="preset-btn" data-cam="top">Cenital</button>
+          <button class="preset-btn" data-cam="iso">Iso</button>
+          <button class="preset-btn" data-cam="three-quarter">¾</button>
+          <button class="preset-btn" data-cam="spine">Lomo</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Instrucciones flotantes -->
+    <div class="hint-bar" id="hint-bar">
+      <span><kbd>Drag</kbd> Rotar</span>
+      <span><kbd>Scroll</kbd> Zoom</span>
+      <span><kbd>Shift+Drag</kbd> Panear</span>
+    </div>
+  </div>
+
+  <!-- Toast de notificaciones -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="src/pdfLoader.js"></script>
+  <script src="src/book.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "book-studio-3d",
+  "version": "1.0.0",
+  "description": "Visualizador 3D de libros y publicaciones para diseño editorial",
+  "scripts": {
+    "dev": "npx serve . -p 3000",
+    "build": "echo 'No build step required - static site'",
+    "preview": "npx serve . -p 4000"
+  },
+  "keywords": ["book", "3d", "three.js", "pdf", "design"],
+  "author": "",
+  "license": "MIT"
+}
